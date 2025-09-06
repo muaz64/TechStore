@@ -1,351 +1,423 @@
-/* app.js - Plain vanilla JS (no frameworks).
-   Key goals:
-   - Safe DOM rendering (no innerHTML with untrusted data)
-   - No inline onclick usage; use addEventListener
-   - Filter buttons via data-filter
-   - Basic modal accessibility + focus handling
-   - Cart persisted to localStorage
-*/
-
-/* -------------------------------------
-   Data (sample). In production fetch this from an API or JSON.
-------------------------------------- */
+// Product data
 const products = [
-  { id: 1, name: "iPhone 15 Pro", price: 999, category: "phones", image: "📱", rating: 5, reviews: 234 },
-  { id: 2, name: "MacBook Pro M3", price: 1999, category: "laptops", image: "💻", rating: 5, reviews: 156 },
-  { id: 3, name: "AirPods Pro", price: 249, category: "accessories", image: "🎧", rating: 4, reviews: 89 },
-  { id: 4, name: "Samsung Galaxy S24", price: 899, category: "phones", image: "📱", rating: 4, reviews: 167 },
-  { id: 5, name: "Dell XPS 13", price: 1299, category: "laptops", image: "💻", rating: 4, reviews: 98 },
-  { id: 6, name: "Apple Watch Ultra", price: 799, category: "accessories", image: "⌚", rating: 5, reviews: 145 },
-  { id: 7, name: "iPad Pro", price: 1099, category: "accessories", image: "📱", rating: 5, reviews: 203 },
-  { id: 8, name: "Surface Laptop", price: 1199, category: "laptops", image: "💻", rating: 4, reviews: 76 }
+    { id: 1, name: "iPhone 15 Pro", price: 999, category: "phones", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=📱", rating: 5, reviews: 234 },
+    { id: 2, name: "MacBook Pro M3", price: 1999, category: "laptops", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=💻", rating: 5, reviews: 156 },
+    { id: 3, name: "AirPods Pro", price: 249, category: "accessories", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=🎧", rating: 4, reviews: 89 },
+    { id: 4, name: "Samsung Galaxy S24", price: 899, category: "phones", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=📱", rating: 4, reviews: 167 },
+    { id: 5, name: "Dell XPS 13", price: 1299, category: "laptops", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=💻", rating: 4, reviews: 98 },
+    { id: 6, name: "Apple Watch Ultra", price: 799, category: "accessories", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=⌚", rating: 5, reviews: 145 },
+    { id: 7, name: "iPad Pro", price: 1099, category: "accessories", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=📱", rating: 5, reviews: 203 },
+    { id: 8, name: "Surface Laptop", price: 1199, category: "laptops", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=💻", rating: 4, reviews: 76 }
 ];
 
-/* -------------------------------------
-   App state
-------------------------------------- */
-let cart = [];               // array of {id, name, price, image, quantity}
+const trendingProducts = [
+    { id: 1, name: "iPhone 15 Pro", price: 999, category: "phones", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=📱", rating: 5, reviews: 234 },
+    { id: 2, name: "MacBook Pro M3", price: 1999, category: "laptops", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=💻", rating: 5, reviews: 156 },
+    { id: 3, name: "AirPods Pro", price: 249, category: "accessories", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=🎧", rating: 4, reviews: 89 },
+    { id: 6, name: "Apple Watch Ultra", price: 799, category: "accessories", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=⌚", rating: 5, reviews: 145 },
+    { id: 7, name: "iPad Pro", price: 1099, category: "accessories", image: "https://placehold.co/150x150/e0e7ff/4338ca?text=📱", rating: 5, reviews: 203 },
+];
+
+let cart = [];
 let currentFilter = 'all';
-let lastFocusedElement = null;
 
-/* -------------------------------------
-   Utility functions
-------------------------------------- */
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-
-const formatPrice = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
-
-function saveCart() {
-  try {
-    localStorage.setItem('techstore_cart', JSON.stringify(cart));
-  } catch (e) { /* ignore storage errors */ }
-}
-function loadCart() {
-  try {
-    const raw = localStorage.getItem('techstore_cart');
-    cart = raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    cart = [];
-  }
+// Custom Message Box
+function showMessage(message, type = 'success') {
+    const messageBox = document.getElementById('messageBox');
+    const messageText = document.getElementById('messageText');
+    messageText.textContent = message;
+    messageBox.className = `fixed top-0 left-1/2 -translate-x-1/2 mt-4 p-4 rounded-lg shadow-xl text-center z-50 message-box`;
+    if (type === 'success') {
+        messageBox.classList.add('bg-green-500');
+    } else if (type === 'error') {
+        messageBox.classList.add('bg-red-500');
+    } else {
+        messageBox.classList.add('bg-blue-500');
+    }
+    messageBox.classList.remove('hidden');
+    setTimeout(() => {
+        messageBox.classList.add('hidden');
+    }, 3000);
 }
 
-/* -------------------------------------
-   Rendering: products
-------------------------------------- */
+// Display product cards
 function createProductCard(product) {
-  const card = document.createElement('div');
-  card.className = 'bg-white rounded-lg overflow-hidden card-hover';
-
-  const inner = document.createElement('div');
-  inner.className = 'p-6 text-center';
-
-  const emoji = document.createElement('div');
-  emoji.className = 'text-6xl mb-4';
-  emoji.setAttribute('aria-hidden', 'true');
-  emoji.textContent = product.image;
-
-  const title = document.createElement('h3');
-  title.className = 'text-xl font-semibold mb-2';
-  title.textContent = product.name;
-
-  // rating row
-  const ratingRow = document.createElement('div');
-  ratingRow.className = 'flex items-center justify-center mb-2';
-  const stars = document.createElement('div');
-  stars.className = 'star-rating';
-  stars.textContent = '★'.repeat(product.rating) + '☆'.repeat(5 - product.rating);
-  ratingRow.appendChild(stars);
-  const rev = document.createElement('span');
-  rev.className = 'ml-2 text-gray-600 text-sm';
-  rev.textContent = `(${product.reviews})`;
-  ratingRow.appendChild(rev);
-
-  const price = document.createElement('p');
-  price.className = 'text-2xl font-bold text-blue-600 mb-4';
-  price.textContent = formatPrice(product.price);
-
-  const btn = document.createElement('button');
-  btn.className = 'w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors';
-  btn.type = 'button';
-  btn.textContent = 'Add to Cart';
-  btn.addEventListener('click', () => addToCart(product.id));
-
-  inner.append(emoji, title, ratingRow, price, btn);
-  card.appendChild(inner);
-  return card;
+    return `
+        <div class="bg-white p-6 rounded-2xl shadow-lg card-hover flex flex-col items-center text-center product-card" data-product-id="${product.id}">
+            <img src="${product.image}" alt="${product.name}" class="w-24 h-24 mb-4 rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/150x150/e0e7ff/4338ca?text=Image';" />
+            <h3 class="text-lg font-semibold mb-1">${product.name}</h3>
+            <div class="flex items-center mb-2">
+                <span class="star-rating text-sm text-yellow-400">
+                    ${'★'.repeat(product.rating)}${'☆'.repeat(5 - product.rating)}
+                </span>
+                <span class="text-xs text-gray-500 ml-2">(${product.reviews})</span>
+            </div>
+            <span class="text-xl font-bold text-blue-600 mb-4">$${product.price}</span>
+            <button class="add-to-cart-btn w-full bg-blue-500 text-white font-semibold py-2 px-4 rounded-full transition-colors hover:bg-blue-600">
+                Add to Cart
+            </button>
+        </div>
+    `;
 }
 
 function displayProducts() {
-  const productGrid = $('#productGrid');
-  productGrid.innerHTML = ''; // clear
-  const filtered = currentFilter === 'all' ? products : products.filter(p => p.category === currentFilter);
-  const frag = document.createDocumentFragment();
-  filtered.forEach(p => frag.appendChild(createProductCard(p)));
-  productGrid.appendChild(frag);
+    const productGrid = document.getElementById('productGrid');
+    const filteredProducts = currentFilter === 'all' ? products : products.filter(p => p.category === currentFilter);
+    productGrid.innerHTML = filteredProducts.map(createProductCard).join('');
 }
 
-/* -------------------------------------
-   Cart operations
-------------------------------------- */
-function addToCart(productId) {
-  const prod = products.find(p => p.id === productId);
-  if (!prod) return;
-  const existing = cart.find(i => i.id === productId);
-  if (existing) {
-    existing.quantity += 1;
-  } else {
-    cart.push({ id: prod.id, name: prod.name, price: prod.price, image: prod.image, quantity: 1 });
-  }
-  saveCart();
-  updateCartUI(true);
+function displayTrendingProducts() {
+    const trendingGrid = document.getElementById('trendingGrid');
+    trendingGrid.innerHTML = trendingProducts.map(createProductCard).join('');
 }
 
-function updateQuantity(productId, change) {
-  const item = cart.find(i => i.id === productId);
-  if (!item) return;
-  item.quantity += change;
-  if (item.quantity <= 0) {
-    cart = cart.filter(i => i.id !== productId);
-  }
-  saveCart();
-  updateCartUI();
-}
-
-function updateCartUI(animateBadge = false) {
-  const cartCount = $('#cartCount');
-  const totalItems = cart.reduce((s, it) => s + it.quantity, 0);
-  cartCount.textContent = totalItems;
-  if (animateBadge) {
-    cartCount.classList.add('cart-badge');
-    setTimeout(() => cartCount.classList.remove('cart-badge'), 500);
-  }
-
-  const cartItems = $('#cartItems');
-  const cartTotal = $('#cartTotal');
-
-  if (!cart || cart.length === 0) {
-    cartItems.innerHTML = '<p class="text-gray-500 text-center py-4">Your cart is empty</p>';
-    cartTotal.textContent = formatPrice(0);
-    return;
-  }
-
-  cartItems.innerHTML = ''; // clear
-  const frag = document.createDocumentFragment();
-  cart.forEach(item => {
-    const row = document.createElement('div');
-    row.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg';
-
-    const left = document.createElement('div');
-    left.className = 'flex items-center';
-    const img = document.createElement('span');
-    img.className = 'text-2xl mr-3';
-    img.textContent = item.image;
-    img.setAttribute('aria-hidden', 'true');
-    const meta = document.createElement('div');
-    const name = document.createElement('p');
-    name.className = 'font-medium';
-    name.textContent = item.name;
-    const priceQty = document.createElement('p');
-    priceQty.className = 'text-sm text-gray-600';
-    priceQty.textContent = `${formatPrice(item.price)} x ${item.quantity}`;
-    meta.append(name, priceQty);
-    left.append(img, meta);
-
-    const right = document.createElement('div');
-    right.className = 'flex items-center space-x-2';
-    const minus = document.createElement('button');
-    minus.type = 'button';
-    minus.className = 'w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-sm';
-    minus.textContent = '-';
-    minus.addEventListener('click', () => updateQuantity(item.id, -1));
-    const qty = document.createElement('span');
-    qty.className = 'w-8 text-center';
-    qty.textContent = item.quantity;
-    const plus = document.createElement('button');
-    plus.type = 'button';
-    plus.className = 'w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-sm';
-    plus.textContent = '+';
-    plus.addEventListener('click', () => updateQuantity(item.id, +1));
-
-    right.append(minus, qty, plus);
-    row.append(left, right);
-    frag.appendChild(row);
-  });
-
-  cartItems.appendChild(frag);
-  const total = cart.reduce((s, it) => s + it.price * it.quantity, 0);
-  cartTotal.textContent = formatPrice(total);
-}
-
-/* -------------------------------------
-   Modal + accessibility helpers
-------------------------------------- */
-function getFocusableElements(container) {
-  const selectors = 'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  return Array.from(container.querySelectorAll(selectors)).filter(el => el.offsetParent !== null);
-}
-
-function openModal(modalId) {
-  const modal = document.getElementById(modalId);
-  if (!modal) return;
-  lastFocusedElement = document.activeElement;
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
-
-  const dialog = modal.querySelector('[role="document"]') || modal.querySelector('div[tabindex="-1"]') || modal.firstElementChild;
-  dialog.setAttribute('tabindex', '-1');
-  dialog.focus();
-
-  // trap focus
-  function trap(e) {
-    if (e.key !== 'Tab') return;
-    const focusables = getFocusableElements(dialog);
-    if (focusables.length === 0) {
-      e.preventDefault();
-      return;
-    }
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
-  modal._trapHandler = trap;
-  document.addEventListener('keydown', trap);
-  document.addEventListener('keydown', modal._escapeHandler = (e) => {
-    if (e.key === 'Escape') closeModal(modalId);
-  });
-}
-
-function closeModal(modalId) {
-  const modal = document.getElementById(modalId);
-  if (!modal) return;
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
-
-  if (modal._trapHandler) {
-    document.removeEventListener('keydown', modal._trapHandler);
-    modal._trapHandler = null;
-  }
-  if (modal._escapeHandler) {
-    document.removeEventListener('keydown', modal._escapeHandler);
-    modal._escapeHandler = null;
-  }
-  if (lastFocusedElement) lastFocusedElement.focus();
-}
-
-/* -------------------------------------
-   UI wiring and event bindings
-------------------------------------- */
-function setupFilters() {
-  $$('#filterBar .filter-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const cat = btn.dataset.filter;
-      currentFilter = cat;
-      // update visuals
-      $$('#filterBar .filter-btn').forEach(b => {
-        b.classList.remove('bg-blue-600', 'text-white');
-        b.classList.add('text-gray-600', 'hover:bg-gray-100');
-      });
-      btn.classList.add('bg-blue-600', 'text-white');
-      displayProducts();
+// Filter products and update UI
+function filterProducts(category) {
+    currentFilter = category;
+    displayProducts();
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+        btn.classList.add('text-gray-600', 'hover:bg-gray-200');
     });
-  });
+    event.target.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+    event.target.classList.remove('text-gray-600', 'hover:bg-gray-200');
 }
 
-function setupNavAndButtons() {
-  // Smooth scroll for same-page links
-  $$('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-      e.preventDefault();
-      const target = document.querySelector(this.getAttribute('href'));
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // close mobile menu if open
-      document.getElementById('mobileMenu').classList.remove('open');
-    });
-  });
-
-  $('#shopNow').addEventListener('click', () => document.getElementById('products').scrollIntoView({ behavior: 'smooth' }));
-  $('#browseBtn').addEventListener('click', () => document.getElementById('products').scrollIntoView({ behavior: 'smooth' }));
-  $('#contactBtn').addEventListener('click', () => openModal('contactModal'));
-
-  // mobile menu controls
-  $('#mobileToggle').addEventListener('click', () => document.getElementById('mobileMenu').classList.toggle('open'));
-  $('#closeMobile').addEventListener('click', () => document.getElementById('mobileMenu').classList.remove('open'));
-
-  // cart open/close
-  $('#cartButton').addEventListener('click', () => {
-    const modal = document.getElementById('cartModal');
-    if (modal.classList.contains('hidden')) {
-      openModal('cartModal');
-      updateCartUI();
-    } else {
-      closeModal('cartModal');
+// Update cart UI
+function updateCartUI() {
+    const cartCounts = document.querySelectorAll('[id^="cartCount"]');
+    const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+    cartCounts.forEach(el => el.textContent = totalItems);
+    
+    const cartItemsContainer = document.getElementById('cartItems');
+    const cartTotalEl = document.getElementById('cartTotal');
+    
+    if (cart.length === 0) {
+        cartItemsContainer.innerHTML = '<p class="text-center text-gray-500 py-8">Your cart is empty.</p>';
+        cartTotalEl.textContent = '0.00';
+        return;
     }
-  });
-  $('#closeCart').addEventListener('click', () => closeModal('cartModal'));
-  $('#closeContact').addEventListener('click', () => closeModal('contactModal'));
-
-  // checkout demo
-  $('#checkoutBtn').addEventListener('click', () => {
-    if (!cart || cart.length === 0) {
-      alert('Your cart is empty!');
-      return;
-    }
-    const total = cart.reduce((s, it) => s + it.price * it.quantity, 0);
-    alert(`Demo Checkout\n\nTotal: ${formatPrice(total)}\n\nIn a real app you would redirect to a secure payment processor.`);
-    cart = [];
-    saveCart();
-    updateCartUI();
-    closeModal('cartModal');
-  });
-
-  // contact form submission (client-side demo only)
-  $('#contactForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    // minimal client-side validation already via required attributes
-    alert('Thank you for your message! We will get back to you within 24 hours.');
-    $('#contactForm').reset();
-    closeModal('contactModal');
-  });
+    
+    cartItemsContainer.innerHTML = cart.map(item => `
+        <div class="flex items-center space-x-4 border-b pb-4">
+            <img src="${item.image}" alt="${item.name}" class="w-16 h-16 rounded-md">
+            <div class="flex-grow">
+                <h4 class="font-semibold text-gray-800">${item.name}</h4>
+                <p class="text-gray-600">$${item.price.toFixed(2)}</p>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button data-product-id="${item.id}" data-change="-1" class="update-quantity-btn bg-gray-200 text-gray-700 w-8 h-8 rounded-full transition-colors hover:bg-gray-300">-</button>
+                <span>${item.quantity}</span>
+                <button data-product-id="${item.id}" data-change="1" class="update-quantity-btn bg-gray-200 text-gray-700 w-8 h-8 rounded-full transition-colors hover:bg-gray-300">+</button>
+            </div>
+        </div>
+    `).join('');
+    
+    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    cartTotalEl.textContent = total.toFixed(2);
 }
 
-/* -------------------------------------
-   Init
-------------------------------------- */
-document.addEventListener('DOMContentLoaded', () => {
-  // dynamic footer year
-  $('#footerYear').textContent = new Date().getFullYear();
-
-  loadCart();
-  setupFilters();
-  displayProducts();
-  updateCartUI();
-  setupNavAndButtons();
+// Add to cart functionality
+document.addEventListener('click', function(event) {
+    const button = event.target.closest('.add-to-cart-btn');
+    if (button) {
+        const card = button.closest('.product-card');
+        const productId = parseInt(card.dataset.productId);
+        const product = products.find(p => p.id === productId) || trendingProducts.find(p => p.id === productId);
+        const existingItem = cart.find(item => item.id === productId);
+        
+        if (existingItem) {
+            existingItem.quantity += 1;
+        } else {
+            cart.push({...product, quantity: 1});
+        }
+        
+        updateCartUI();
+        const cartBtn = document.getElementById('cartBtn');
+        cartBtn.classList.add('cart-badge');
+        setTimeout(() => cartBtn.classList.remove('cart-badge'), 500);
+    }
 });
+
+// Event delegation for cart quantity buttons
+document.getElementById('cartItems').addEventListener('click', function(event) {
+    const button = event.target.closest('.update-quantity-btn');
+    if (button) {
+        const productId = parseInt(button.dataset.productId);
+        const change = parseInt(button.dataset.change);
+        const itemIndex = cart.findIndex(item => item.id === productId);
+        
+        if (itemIndex > -1) {
+            cart[itemIndex].quantity += change;
+            if (cart[itemIndex].quantity <= 0) {
+                cart.splice(itemIndex, 1);
+            }
+        }
+        updateCartUI();
+    }
+});
+
+// Modal functionality
+const cartModal = document.getElementById('cartModal');
+const authModal = document.getElementById('authModal');
+const cartBtn = document.getElementById('cartBtn');
+const loginBtn = document.getElementById('loginBtn');
+const closeCartBtn = document.getElementById('closeCartBtn');
+const closeAuthBtn = document.getElementById('closeAuthBtn');
+const loginBtnMobile = document.getElementById('loginBtnMobile');
+const cartBtnMobile = document.getElementById('cartBtnMobile');
+
+function openModal(modal) {
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+}
+
+function closeModal(modal) {
+    modal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+}
+
+cartBtn.addEventListener('click', () => openModal(cartModal));
+cartBtnMobile.addEventListener('click', () => openModal(cartModal));
+closeCartBtn.addEventListener('click', () => closeModal(cartModal));
+
+loginBtn.addEventListener('click', () => openModal(authModal));
+loginBtnMobile.addEventListener('click', () => openModal(authModal));
+closeAuthBtn.addEventListener('click', () => closeModal(authModal));
+
+window.addEventListener('click', function(event) {
+    if (event.target === cartModal) {
+        closeModal(cartModal);
+    }
+    if (event.target === authModal) {
+        closeModal(authModal);
+    }
+});
+
+// Mobile menu functionality
+const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+const mobileMenu = document.getElementById('mobileMenu');
+const closeMobileMenuBtn = document.getElementById('closeMobileMenuBtn');
+const mobileNavLinks = mobileMenu.querySelectorAll('a');
+
+mobileMenuBtn.addEventListener('click', () => {
+    mobileMenu.classList.remove('-translate-x-full');
+});
+
+closeMobileMenuBtn.addEventListener('click', () => {
+    mobileMenu.classList.add('-translate-x-full');
+});
+
+mobileNavLinks.forEach(link => {
+    link.addEventListener('click', () => {
+        mobileMenu.classList.add('-translate-x-full');
+    });
+});
+
+// Auth modal form switching
+const loginForm = document.getElementById('loginForm');
+const signupForm = document.getElementById('signupForm');
+const toggleSignup = document.getElementById('toggleSignup');
+const authTitle = document.getElementById('authTitle');
+const formToggleText = document.getElementById('formToggleText');
+
+toggleSignup.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (loginForm.classList.contains('hidden')) {
+        loginForm.classList.remove('hidden');
+        signupForm.classList.add('hidden');
+        authTitle.textContent = 'Login to TechStore';
+        formToggleText.innerHTML = 'Don\'t have an account? <a href="#" id="toggleSignup" class="text-blue-600 hover:underline">Signup now</a>';
+    } else {
+        loginForm.classList.add('hidden');
+        signupForm.classList.remove('hidden');
+        authTitle.textContent = 'Create an Account';
+        formToggleText.innerHTML = 'Already have an account? <a href="#" id="toggleSignup" class="text-blue-600 hover:underline">Login instead</a>';
+    }
+});
+
+// Placeholder for form submission logic
+loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    showMessage('Login successful!', 'success');
+    closeModal(authModal);
+});
+
+signupForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const password = document.getElementById('signupPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    if (password !== confirmPassword) {
+        showMessage('Passwords do not match.', 'error');
+        return;
+    }
+    showMessage('Account created successfully!', 'success');
+    closeModal(authModal);
+});
+
+// Live Chat functionality
+const chatModal = document.getElementById('chatModal');
+const openChatBtn = document.getElementById('openChatBtn');
+const closeChatBtn = document.getElementById('closeChatBtn');
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const sendChatBtn = document.getElementById('sendChatBtn');
+
+openChatBtn.addEventListener('click', () => openModal(chatModal));
+closeChatBtn.addEventListener('click', () => closeModal(chatModal));
+
+sendChatBtn.addEventListener('click', sendMessage);
+chatInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        sendMessage();
+    }
+});
+
+function sendMessage() {
+    const message = chatInput.value.trim();
+    if (message === '') return;
+
+    // User message
+    const userMessageDiv = document.createElement('div');
+    userMessageDiv.className = 'flex justify-end';
+    userMessageDiv.innerHTML = `<div class="bg-blue-500 text-white p-3 rounded-lg max-w-[80%] hide-scrollbar">${message}</div>`;
+    chatMessages.appendChild(userMessageDiv);
+    
+    chatInput.value = '';
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // Simple AI response
+    setTimeout(() => {
+        const botMessageDiv = document.createElement('div');
+        botMessageDiv.className = 'flex justify-start';
+        botMessageDiv.innerHTML = `<div class="bg-gray-200 text-gray-800 p-3 rounded-lg max-w-[80%]">Thank you for your message. An agent will be with you shortly.</div>`;
+        chatMessages.appendChild(botMessageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 1000);
+}
+
+// FAQ accordion
+document.querySelectorAll('.faq-question').forEach(button => {
+    button.addEventListener('click', () => {
+        const answer = button.nextElementSibling;
+        const icon = button.querySelector('i');
+        const isHidden = answer.classList.contains('hidden');
+
+        // Close all other open answers
+        document.querySelectorAll('.faq-answer').forEach(ans => {
+            if (ans !== answer) {
+                ans.classList.add('hidden');
+                ans.previousElementSibling.querySelector('i').classList.remove('fa-minus');
+                ans.previousElementSibling.querySelector('i').classList.add('fa-plus');
+            }
+        });
+
+        // Toggle the clicked one
+        if (isHidden) {
+            answer.classList.remove('hidden');
+            icon.classList.remove('fa-plus');
+            icon.classList.add('fa-minus');
+        } else {
+            answer.classList.add('hidden');
+            icon.classList.remove('fa-minus');
+            icon.classList.add('fa-plus');
+        }
+    });
+});
+
+
+// Chart.js data visualization
+const salesCtx = document.getElementById('salesChart').getContext('2d');
+new Chart(salesCtx, {
+    type: 'bar',
+    data: {
+        labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+        datasets: [{
+            label: 'Sales ($M)',
+            data: [12, 19, 14, 25],
+            backgroundColor: [
+                'rgba(59, 130, 246, 0.6)',
+                'rgba(59, 130, 246, 0.6)',
+                'rgba(59, 130, 246, 0.6)',
+                'rgba(59, 130, 246, 0.8)'
+            ],
+            borderColor: [
+                'rgba(59, 130, 246, 1)',
+                'rgba(59, 130, 246, 1)',
+                'rgba(59, 130, 246, 1)',
+                'rgba(59, 130, 246, 1)'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    }
+});
+
+const trafficCtx = document.getElementById('trafficChart').getContext('2d');
+new Chart(trafficCtx, {
+    type: 'line',
+    data: {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        datasets: [{
+            label: 'Website Visitors',
+            data: [5000, 7500, 6000, 9000, 11000, 10500],
+            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+            borderColor: 'rgba(59, 130, 246, 1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    }
+});
+
+// Initial content load
+document.addEventListener('DOMContentLoaded', () => {
+    displayTrendingProducts();
+    displayProducts();
+    updateCartUI();
+});
+// Contact Form functionality
+const contactForm = document.getElementById('contactForm');
+
+if (contactForm) {
+    contactForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        // You would typically send the form data to a backend here
+        // For this example, we'll just show a success message
+        const name = document.getElementById('name').value;
+        const email = document.getElementById('email').value;
+        const message = document.getElementById('message').value;
+
+        // Clear the form fields
+        document.getElementById('name').value = '';
+        document.getElementById('email').value = '';
+        document.getElementById('message').value = '';
+
+        showMessage(`Thank you, ${name}! Your message has been sent.`, 'success');
+    });
+}
